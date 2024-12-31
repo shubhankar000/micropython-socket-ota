@@ -18,6 +18,7 @@ The `OTAUpdater` class in `ota/__init__.py` enables devices like ESP32 to act as
 ### Usage
 ```python
 from ota import OTAUpdater
+import _thread
 
 config = {
     "WIFI_SSID": "YourSSID",
@@ -26,9 +27,13 @@ config = {
     "OTA_PASSWORD": "YourOTAPassword",
 }
 
-ota_updater = OTAUpdater(config)
-ota_updater.connect_wifi()
-ota_updater.start_server()
+def start_ota():
+    """Run OTA server in a separate thread"""
+    updater = OTAUpdater()
+    updater.connect_wifi()
+    updater.start_server()
+
+_thread.start_new_thread(start_ota, ())
 ```
 
 ### Limitations
