@@ -29,7 +29,7 @@ config = {
 
 def start_ota():
     """Run OTA server in a separate thread"""
-    updater = OTAUpdater()
+    updater = OTAUpdater(config)
     updater.connect_wifi()
     updater.start_server()
 
