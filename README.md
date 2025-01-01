@@ -1,6 +1,7 @@
 # MicroPython-Socket-OTA with Compression
 
 A MicroPython library for socket-based over-the-air (OTA) updates using compressed data streams. This implementation improves update speed and reduces overhead by bundling and compressing files before transfer.
+Only meant to be used over the local network. I wouldn't know how to make it compatible with the outside world.
 
 ## Overview
 - **`ota/__init__.py`**: Implements the OTA server for ESP32 and similar devices.
