@@ -1,75 +1,79 @@
+# MicroPython-Socket-OTA with Compression
 
-# MicroPython-Socket-OTA
-
-MicroPython library for local network socket-based over-the-air (OTA) updates, inspired by Arduino ESP32's OTA functionality.
+A MicroPython library for socket-based over-the-air (OTA) updates using compressed data streams. This implementation improves update speed and reduces overhead by bundling and compressing files before transfer.
 
 ## Overview
-- **`ota/__init__.py`**: Implements the OTA server.
-- **`ota_client.py`**: Client script to trigger OTA from a development system.
+- **`ota/__init__.py`**: Implements the OTA server for ESP32 and similar devices.
+- **`ota_client.py`**: Client script to compress and send updates from a development system.
 
-## OTA Server: `OTAUpdater`
-The `OTAUpdater` class in `ota/__init__.py` enables devices like ESP32 to act as OTA servers.
+## Key Features
 
-### Features
-- Supports mDNS based hostname.
-- SHA256-based authentication.
-- Completely non-blocking, runs on a separate thread.
+### OTA Server: `OTAUpdater`
+- **WiFi Setup**: Configure and connect to a WiFi network.
+- **Challenge-Response Authentication**: Ensures secure updates using SHA256.
+- **Compressed Updates**: Receives, decompresses, and applies updates in a single operation.
+- **Device Reboot**: Automatically reboots after a successful update.
 
-### Usage
+#### Usage Example
 ```python
 from ota import OTAUpdater
-import _thread
 
 config = {
     "WIFI_SSID": "YourSSID",
     "WIFI_PASSWORD": "YourPassword",
-    "DEVICE_NAME": "YourDeviceName",
     "OTA_PASSWORD": "YourOTAPassword",
 }
 
-def start_ota():
-    """Run OTA server in a separate thread"""
-    updater = OTAUpdater(config)
-    updater.connect_wifi()
-    updater.start_server()
-
-_thread.start_new_thread(start_ota, ())
+ota_updater = OTAUpdater()
+ota_updater.start_server()
 ```
 
-### Limitations
-- Supports only one client connection.
-- Does not handle incomplete uploads.
-- Limited to JSON metadata.
-- Currently can only be triggered through the client script, not through an IDE or extension.
+#### Limitations
+- Supports only one client connection at a time.
+- Assumes sufficient disk space for compressed and decompressed data.
 
-## OTA Client: `ota_client.py`
-Transfers updates from a client machine to the OTA server.
+---
 
-### Features
-- Resolves mDNS hostnames.
-- Challenge-response authentication.
-- Gathers files recursively with ignore patterns.
-- Displays a progress bar.
+### OTA Client: `ota_client.py`
+- **File Compression**: Combines and compresses files into a single stream for efficiency.
+- **Progress Display**: Shows upload progress using a progress bar.
+- **Challenge-Response Authentication**: Authenticates with the server using a secure SHA256-based method.
+- **Automatic File Filtering**: Ignores files based on patterns specified in `pymakr.conf`.
 
-### Command Example
+#### Command Example
 ```bash
 python ota_client.py --host myesp32.local --port 8266 --src ./src --password my_secure_password
 ```
 
-### Key Arguments
-- `--host`: Device hostname or IP.
-- `--port`: Server port (default: 8266).
-- `--src`: Source directory (default: ./src).
-- `--password`: OTA password (prompted if not provided).
+#### Key Arguments
+- `--host`: Device hostname or IP (e.g., `myesp32.local`).
+- `--port`: OTA server port (default: 8266).
+- `--src`: Path to the source directory (default: `./src`).
+- `--password`: OTA password (will prompt if not provided).
 
-### Limitations
-- Requires Python 3.x.
-- Needs `pymakr.conf` for ignore patterns.
-- Does not resume interrupted uploads.
-- Only tested on ESP32-S3, but should work on most micropython ports.
+---
+
+## How It Works
+
+### Compression and Transmission
+1. **Client**:
+   - Collects all files from the specified source directory.
+   - Compresses the files into a single Deflate stream.
+   - Sends metadata and compressed data to the server.
+2. **Server**:
+   - Authenticates the client.
+   - Receives metadata and validates available space.
+   - Decompresses the update and applies the changes.
+   - Reboots the device after a successful update.
+
+### Performance Improvements
+- **Compression**: Significantly reduces data size, improving transfer speed.
+- **Single Stream**: Reduces overhead by sending files in a single operation.
+
+---
 
 ## Contributions
-Contributions are welcome! Submit issues and pull requests on the GitHub repository.
+Contributions are welcome! Submit issues and pull requests on the [GitHub repository](#).
 
 ## License
 Licensed under the MIT License. See the `LICENSE` file for details.
