@@ -10,6 +10,7 @@ Only meant to be used over the local network. I wouldn't know how to make it com
 ## Key Features
 
 ### OTA Server: `OTAUpdater`
+- **Super Fast**: Much faster than Pymakr transfer speeds.
 - **WiFi Setup**: Configure and connect to a WiFi network.
 - **Challenge-Response Authentication**: Ensures secure updates using SHA256.
 - **Compressed Updates**: Receives, decompresses, and applies updates in a single operation.
