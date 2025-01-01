@@ -1,6 +1,7 @@
 import argparse
 import getpass
 import hashlib
+import io
 import json
 import socket
 import sys
@@ -136,10 +137,45 @@ class OTAClient:
             self._log("No files to upload")
             return
 
-        metadata = {"files": files_info}
-        metadata_bytes = json.dumps(metadata).encode()
-        self._log(f"Metadata size: {len(metadata_bytes)} bytes")
+        # Create a BytesIO buffer for the compressed data
+        compressed_buffer = io.BytesIO()
 
+        # Create a deflate compressor with maximum window size (15)
+        import zlib
+
+        compressor = zlib.compressobj(
+            level=9, wbits=-15
+        )  # Negative wbits for raw deflate format
+
+        total_uncompressed = 0
+
+        # Compress all files into a single stream
+        self._log("Compressing files...")
+        for file_info in files_info:
+            with open(file_info["full_path"], "rb") as f:
+                data = f.read()
+                total_uncompressed += len(data)
+                compressed_buffer.write(compressor.compress(data))
+
+        # Finish compression
+        compressed_buffer.write(compressor.flush())
+        compressed_size = compressed_buffer.tell()
+        compressed_buffer.seek(0)
+
+        self._log(
+            f"Compressed size: {compressed_size} bytes (from {total_uncompressed} bytes) "
+            f"({100 - compressed_size / total_uncompressed * 100:.2f}% reduction)"
+        )
+
+        # Prepare metadata
+        metadata = {
+            "compressed_size": compressed_size,
+            "total_uncompressed": total_uncompressed,
+            "files": files_info,
+        }
+        metadata_bytes = json.dumps(metadata).encode()
+
+        # Connect and authenticate
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(10)
         try:
@@ -150,72 +186,43 @@ class OTAClient:
                 self._log("Authentication failed, aborting update")
                 return
 
-            # Calculate total bytes to transfer (metadata + files)
-            total_bytes = len(metadata_bytes) + sum(
-                file_info["size"] for file_info in files_info
-            )
-            self._log(f"Total bytes to transfer: {total_bytes}")
+            # Send metadata
+            sock.send(f"{len(metadata_bytes):10d}".encode())
+            response = sock.recv(2)
+            if response != b"OK":
+                self._log(f"Failed to send metadata size: {response}")
+                return
 
-            # Create progress bar for all transfers
+            sock.send(metadata_bytes)
+            response = sock.recv(2)
+            if response != b"OK":
+                self._log(f"Failed to send metadata: {response}")
+                return
+
+            # Send compressed data with progress bar
             with tqdm(
-                total=total_bytes, desc="Uploading", unit="B", unit_scale=True
+                total=compressed_size, desc="Uploading", unit="Bytes", unit_scale=True
             ) as pbar:
-                # Send metadata size
-                sock.send(f"{len(metadata_bytes):10d}".encode())
-
-                response = sock.recv(2)
-                if response != b"OK":
-                    self._log(f"Failed to send metadata size: {response}")
-                    return
-
-                # Send metadata content
-                chunk_size = 1024
-                for i in range(0, len(metadata_bytes), chunk_size):
-                    chunk = metadata_bytes[i : i + chunk_size]
+                while True:
+                    chunk = compressed_buffer.read(1024)
+                    if not chunk:
+                        break
                     sock.send(chunk)
                     pbar.update(len(chunk))
 
-                response = sock.recv(2)
-                if response != b"OK":
-                    self._log(f"Failed to send metadata: {response}")
-                    return
-
-                # Send each file
-                for file_info in files_info:
-                    # self._log(f"Sending file: {file_info['path']}")
-                    with open(file_info["full_path"], "rb") as f:
-                        while True:
-                            chunk = f.read(1024)
-                            if not chunk:
-                                break
-                            sock.send(chunk)
-                            pbar.update(len(chunk))
-
-                    response = sock.recv(2)
-                    if response != b"OK":
-                        self._log(f"Failed to upload {file_info['path']}: {response}")
-                        return
-
             # Wait for final confirmation
             self._log("Waiting for final confirmation...")
-            final_response = sock.recv(14)  # Length of "UPDATE_SUCCESS"
+            final_response = sock.recv(14)
             if final_response == b"UPDATE_SUCCESS":
                 self._log("Update completed successfully! Device is rebooting.")
             else:
                 self._log(f"Unexpected final response: {final_response}")
 
-        except socket.timeout:
-            self._log("Connection timed out")
-        except ConnectionError as e:
-            if "forcibly closed" in str(e):
-                self._log("Device is rebooting after successful update")
-            else:
-                self._log(f"Connection error: {e}")
         except Exception as e:
             self._log(f"Error during update: {e}")
         finally:
-            self._log("Closing connection")
             sock.close()
+            compressed_buffer.close()
 
 
 def main():
